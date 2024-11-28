@@ -3,6 +3,7 @@ plugins {
 }
 
 repositories {
+    google()
     mavenCentral()
 }
 kotlin {
@@ -12,10 +13,9 @@ kotlin {
         val desktopMain by getting
 
         commonMain.dependencies {
-
+            implementation(libs.androidx.compose.ui)
         }
         desktopMain.dependencies {
-
         }
     }
 }

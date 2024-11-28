@@ -1,140 +1,174 @@
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
+
 fun main () {
     val svgText = SVG.javaClass.classLoader.getResourceAsStream("sample.svg")?.reader()?.readText().orEmpty()
 
     val tokens = tokenize(svgText)
     val parserState = ParserState(tokens, svgText)
-    val element = parserState.parseNextElement()
-    element?.print(0)
+    val parsedRoot = parserState.parseNextElement() as ParsedTag
+    val document = convertToDocument(parsedRoot)
+    println(document)
 }
 
 object SVG
 
+fun convertToDocument(root: ParsedTag): Document {
+    root.expectName("svg")
+    root.expectAttributeValue("version", "1.1")
+    root.expectAttributeValue("xmlns", "http://www.w3.org/2000/svg")
 
-sealed interface Element
-
-data class Tag(
-    val id: String,
-    val attributes: Map<String, String>,
-    val children: List<Element>
-) : Element
-
-data class Comment(val content: String) : Element
-
-private fun Element.print(indent: Int) {
-    when (this) {
-        is Tag -> {
-            printIndented(indent, "<$id ${attributes.entries.joinToString(" ") { (key, value) -> "$key = \"$value\"" }}>")
-            children.forEach { it.print(indent + 2) }
-            printIndented(indent, "</$id>")
-        }
-        is Comment -> {
-            printIndented(indent, content)
-        }
-    }
-}
-
-fun printIndented(indent: Int, string: String) {
-    repeat(indent) {
-        print(" ")
-    }
-    println(string)
-}
-
-class ParserState(val tokens: List<Token>, val svg: String) {
-    private var offset = 0
-
-    fun next(): Token? {
-        if (offset >= tokens.size) {
-            return null
-        }
-        return tokens[offset++]
-    }
-
-    fun expect(tokenType: TokenType): Token {
-        val token = next() ?: error("Expected token of type $tokenType")
-        if (token.type != tokenType) {
-            parseError(token, "Expected token of type $tokenType")
-        }
-        return token
-    }
-
-    fun rewind() {
-        offset--
-    }
-
-    fun parseError(token: Token, message: String = "Unexpected token"): Nothing =
-        error("$message at ${token}, text: ${svg.substring(token.startOffset, token.endOffset + 10)}")
-}
-
-fun ParserState.parseNextElement(): Element? {
-
-    val openingToken = next() ?: error("Expected a token when starting element")
-    when (openingToken.type) {
-        TokenType.Comment -> {
-            return Comment(svg.substring(openingToken.startOffset, openingToken.endOffset))
-        }
-        TokenType.AngleBracketOpen -> {
-            val token = next() ?: parseError(openingToken, "Expected a token after ")
-            when (token.type) {
-                TokenType.ForwardSlash -> {
-                    // </
-                    //  ^ we are here
-                    rewind()
-                    rewind()
-                    return null // Closing tag, return to parent
-                }
-                TokenType.Identifier -> {
-                    val id = svg.substring(token.startOffset, token.endOffset)
-                    val attributes = mutableMapOf<String, String>()
-                    var next = next() ?: parseError(token, "Incomplete tag")
-                    while (next.type != TokenType.AngleBracketClose) {
-                        when (next.type) {
-                            TokenType.Identifier -> {
-                                val key = svg.substring(next.startOffset, next.endOffset)
-                                expect(TokenType.Equal)
-                                val valueToken = expect(TokenType.StringLiteral)
-
-                                attributes[key] = svg.substring(valueToken.startOffset + 1, valueToken.endOffset - 1)
-                            }
-                            TokenType.ForwardSlash -> {
-                                // Self closing tag
-                                expect(TokenType.AngleBracketClose)
-                                return Tag(id, attributes, emptyList())
-                            }
-                            else -> {
-                                parseError(next)
-                            }
-                        }
-                        next = next() ?: parseError(token, "Incomplete tag")
-                    }
-
-
-                    val children = mutableListOf<Element>()
-                    var child = parseNextElement()
-                    while (child != null) {
-                        children.add(child)
-                        child = parseNextElement()
-                    }
-
-                    expect(TokenType.AngleBracketOpen)
-                    expect(TokenType.ForwardSlash)
-                    val closingId = expect(TokenType.Identifier)
-                    if (id != svg.substring(closingId.startOffset, closingId.endOffset)) {
-                        parseError(closingId, "Expected closing tag for $id")
-                    }
-                    expect(TokenType.AngleBracketClose)
-
-                    return Tag(id, attributes, children)
-                }
-                else -> {
-                    parseError(token)
-                }
+    return Document(
+        version = Document.Version.v1_1,
+        viewBox = root.expectAttribute("viewBox").split(" ").let { (x, y, width, height) ->
+            val xF = x.toFloat()
+            val yF = y.toFloat()
+            Rect(
+                left = xF,
+                top = yF,
+                right = xF + width.toFloat(),
+                bottom = yF + height.toFloat()
+            )
+        },
+        width = root.expectAttribute("width").toFloat(),
+        height = root.expectAttribute("height").toFloat(),
+        children = root.children.mapNotNull {
+            when (it) {
+                is ParsedComment -> null
+                is ParsedTag -> convertToElement(it)
             }
         }
-        else -> {
-            parseError(openingToken)
+    )
+}
+
+fun ParsedTag.expectName(name: String) {
+    if (this.name != name) {
+        error("Expected tag with name $name, but got $this")
+    }
+}
+
+fun ParsedTag.expectAttribute(name: String): String {
+    return attributes[name] ?: error("Expected tag with attribute $name, but got $this")
+}
+
+fun ParsedTag.expectAttributeValue(name: String, value: String) {
+    if (attributes[name] != value) {
+        error("Expected tag attribute $name to be $value, but got $this")
+    }
+}
+
+fun convertToElement(parsed: ParsedTag): Element? =
+    when(val name = parsed.name) {
+        "g" -> {
+            parsed.attributes.forEach { (k, _) ->
+                when(k) {
+                    "stroke-linecap",
+                    "transform" -> {}
+                    else -> {
+                        error("Unknown attribute: $k")
+                    }
+                }
+            }
+            Group(
+                children = parsed.children.mapNotNull {
+                    when (it) {
+                        is ParsedComment -> null
+                        is ParsedTag -> convertToElement(it)
+                    }
+                },
+                strokeLineCap = when (parsed.attributes["stroke-linecap"]) {
+                    "round" -> Group.StrokeLineCap.Round
+                    "square" -> Group.StrokeLineCap.Square
+                    "butt", null -> Group.StrokeLineCap.Butt
+                    else -> error("Unknown stroke-linecap value: $parsed")
+                },
+                transform = parsed.attributes["transform"]?.let { parseTransform(it) } ?: Matrix()
+            )
         }
+        "path" -> {
+            parsed.attributes.forEach { (k, _) ->
+                when(k) {
+                    "d",
+                    "stroke",
+                    "stroke-width",
+                    "fill" -> {}
+                    else -> {
+                        error("Unknown attribute: $k")
+                    }
+                }
+            }
+            Path(
+                data = parsed.expectAttribute("d"),
+                strokeColor = parseColor(parsed.expectAttribute("stroke")),
+                strokeWidth = parsed.expectAttribute("stroke-width").toFloat(),
+                fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) }
+            )
+        }
+        "defs",
+        "mask" -> null
+        else -> error("Unknown tag: $parsed")
     }
 
-    return null
+@OptIn(ExperimentalStdlibApi::class)
+fun parseColor(value: String): Color {
+    require(value.startsWith("#")) { "Color value should start with #, but got $value" }
+    return Color(value.substring(1).hexToLong())
 }
+
+fun parseTransform(value: String): Matrix {
+    val transformRegex = "([a-z]+)\\(([0-9. ]+)\\)".toRegex()
+    val matches = transformRegex.findAll(value)
+    return matches.fold(Matrix()) { matrix, match ->
+        val (operation, values) = match.destructured
+        val parsedValues = values.split(" ").map { it.toFloat() }
+        when (operation) {
+            "translate" -> matrix.apply {
+                translate(parsedValues[0], parsedValues[1])
+            }
+            "scale" -> matrix.apply {
+                scale(parsedValues[0], parsedValues.getOrNull(1) ?: parsedValues[0])
+            }
+            "rotate" -> matrix.apply {
+                rotateX(parsedValues[0])
+                rotateY(parsedValues[1])
+                rotateZ(parsedValues[2])
+            }
+            else -> error("Unknown transform operation: $operation")
+        }
+    }
+}
+
+interface Element
+
+data class Document(
+    val version: Version,
+    val viewBox: Rect,
+    val width: Float,
+    val height: Float,
+    val children: List<Element>
+) {
+    enum class Version {
+        v1_1
+    }
+}
+
+data class Group(
+    val children: List<Element>,
+    val strokeLineCap: StrokeLineCap = StrokeLineCap.Butt,
+    val transform: Matrix
+) : Element {
+    enum class StrokeLineCap {
+        Butt,
+        Round,
+        Square
+    }
+}
+
+data class Path(
+    val data: String,
+    val strokeColor: Color,
+    val strokeWidth: Float,
+    val fill: Color?,
+) : Element
+
