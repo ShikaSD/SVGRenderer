@@ -13,7 +13,8 @@ kotlin {
         val desktopMain by getting
 
         commonMain.dependencies {
-            implementation(libs.androidx.compose.ui)
+            implementation(libs.androidx.compose.ui.graphics)
+            implementation(libs.androidx.compose.ui.util)
         }
         desktopMain.dependencies {
         }

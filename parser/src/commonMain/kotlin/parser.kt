@@ -52,7 +52,7 @@ class ParserState(val tokens: List<Token>, val svg: String) {
     }
 
     fun parseError(token: Token, message: String = "Unexpected token"): Nothing =
-        error("$message at ${token}, text: ${svg.substring(token.startOffset, token.endOffset + 10)}")
+        error("$message at ${token}, text: ${svg.debugString(offset)}")
 }
 
 fun ParserState.parseNextElement(): ParsedElement? {

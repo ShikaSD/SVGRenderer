@@ -1,5 +1,3 @@
-
-
 data class Token(
     val type: TokenType,
     // Inclusive
@@ -124,5 +122,5 @@ private fun identifier(start: Int, svg: String): Token? {
 }
 
 private fun lexerError(offset: Int, svg: String, message: String = "Unexpected character"): Nothing {
-    error("$message at offset $offset: ${svg.substring(offset, offset + 15)}")
+    error("$message at offset $offset: ${svg.debugString(offset)}")
 }

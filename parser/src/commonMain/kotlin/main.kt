@@ -59,7 +59,7 @@ fun ParsedTag.expectAttributeValue(name: String, value: String) {
 }
 
 fun convertToElement(parsed: ParsedTag): Element? =
-    when(val name = parsed.name) {
+    when(parsed.name) {
         "g" -> {
             parsed.attributes.forEach { (k, _) ->
                 when(k) {
@@ -99,7 +99,7 @@ fun convertToElement(parsed: ParsedTag): Element? =
                 }
             }
             Path(
-                data = parsed.expectAttribute("d"),
+                data = parsePathData(parsed.expectAttribute("d")),
                 strokeColor = parseColor(parsed.expectAttribute("stroke")),
                 strokeWidth = parsed.expectAttribute("stroke-width").toFloat(),
                 fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) }
@@ -109,6 +109,7 @@ fun convertToElement(parsed: ParsedTag): Element? =
         "mask" -> null
         else -> error("Unknown tag: $parsed")
     }
+
 
 @OptIn(ExperimentalStdlibApi::class)
 fun parseColor(value: String): Color {
@@ -166,9 +167,17 @@ data class Group(
 }
 
 data class Path(
-    val data: String,
+    val data: List<PathElement>,
     val strokeColor: Color,
     val strokeWidth: Float,
     val fill: Color?,
 ) : Element
 
+
+fun String.debugString(offset: Int) =
+    buildString {
+        val data = this@debugString
+        append(data.substring((offset - 15).coerceAtLeast(0), offset))
+        append("|")
+        append(data.substring(offset, (offset + 15).coerceAtMost(data.length)))
+    }
