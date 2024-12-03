@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    id("org.jetbrains.compose-hot-reload") version "1.0.0-dev.31.1"
 }
 
 kotlin {

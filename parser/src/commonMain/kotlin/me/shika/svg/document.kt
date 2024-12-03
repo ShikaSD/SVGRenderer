@@ -4,25 +4,13 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
 
-fun main () {
-    val svgText = SVG.javaClass.classLoader.getResourceAsStream("sample.svg")?.reader()?.readText().orEmpty()
 
-    val tokens = tokenize(svgText)
-    val parserState = ParserState(tokens, svgText)
-    val parsedRoot = parserState.parseNextElement() as ParsedTag
-    val document = convertToDocument(parsedRoot)
-    println(document)
-}
-
-object SVG
-
-fun convertToDocument(root: ParsedTag): Document {
+fun convertToDocument(root: ParsedTag): SvgDocument {
     root.expectName("svg")
-    root.expectAttributeValue("version", "1.1")
     root.expectAttributeValue("xmlns", "http://www.w3.org/2000/svg")
 
-    return Document(
-        version = Document.Version.v1_1,
+    return SvgDocument(
+        version = SvgDocument.Version.v1_1,
         viewBox = root.expectAttribute("viewBox").split(" ").let { (x, y, width, height) ->
             val xF = x.toFloat()
             val yF = y.toFloat()
@@ -33,8 +21,6 @@ fun convertToDocument(root: ParsedTag): Document {
                 bottom = yF + height.toFloat()
             )
         },
-        width = root.expectAttribute("width").toFloat(),
-        height = root.expectAttribute("height").toFloat(),
         children = root.children.mapNotNull {
             when (it) {
                 is ParsedComment -> null
@@ -60,7 +46,7 @@ fun ParsedTag.expectAttributeValue(name: String, value: String) {
     }
 }
 
-private fun convertToElement(parsed: ParsedTag): Element? =
+private fun convertToElement(parsed: ParsedTag): SvgElement? =
     when(parsed.name) {
         "g" -> {
             parsed.attributes.forEach { (k, _) ->
@@ -80,9 +66,10 @@ private fun convertToElement(parsed: ParsedTag): Element? =
                     }
                 },
                 strokeLineCap = when (parsed.attributes["stroke-linecap"]) {
-                    "round" -> Group.StrokeLineCap.Round
-                    "square" -> Group.StrokeLineCap.Square
-                    "butt", null -> Group.StrokeLineCap.Butt
+                    "round" -> StrokeLineCap.Round
+                    "square" -> StrokeLineCap.Square
+                    "butt" -> StrokeLineCap.Butt
+                    null -> null
                     else -> error("Unknown stroke-linecap value: $parsed")
                 },
                 transform = parsed.attributes["transform"]?.let { parseTransform(it) } ?: Matrix()
@@ -94,7 +81,9 @@ private fun convertToElement(parsed: ParsedTag): Element? =
                     "d",
                     "stroke",
                     "stroke-width",
-                    "fill" -> {}
+                    "fill",
+                    "fill-rule",
+                    "clip-rule" -> {}
                     else -> {
                         error("Unknown attribute: $k")
                     }
@@ -102,9 +91,11 @@ private fun convertToElement(parsed: ParsedTag): Element? =
             }
             Path(
                 data = parsePathData(parsed.expectAttribute("d")),
-                strokeColor = parseColor(parsed.expectAttribute("stroke")),
-                strokeWidth = parsed.expectAttribute("stroke-width").toFloat(),
-                fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) }
+                stroke = parsed.attributes["stroke"]?.takeIf { it != "none" }?.let { parseColor(it) },
+                strokeWidth = parsed.attributes["stroke-width"]?.toFloat() ?: 1f,
+                fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) },
+                fillRule = parsed.attributes["fill-rule"]?.let { parseFillRule(it) },
+                clipRule = parsed.attributes["clip-rule"]?.let { parseFillRule(it) }
             )
         }
         "defs",
@@ -112,11 +103,20 @@ private fun convertToElement(parsed: ParsedTag): Element? =
         else -> error("Unknown tag: $parsed")
     }
 
+private fun parseFillRule(value: String): FillRule =
+    when (value) {
+        "nonzero" -> FillRule.NonZero
+        "evenodd" -> FillRule.EvenOdd
+        else -> error("Unknown fill-rule value: $value")
+    }
 
 @OptIn(ExperimentalStdlibApi::class)
 fun parseColor(value: String): Color {
-    require(value.startsWith("#")) { "Color value should start with #, but got $value" }
-    return Color(value.substring(1).hexToLong())
+    require(value.startsWith("#") && value.length == 7) { "Expected a hex string, but got $value" }
+    val r = value.substring(1, 3).hexToInt()
+    val g = value.substring(3, 5).hexToInt()
+    val b = value.substring(5, 7).hexToInt()
+    return Color(r, g, b)
 }
 
 fun parseTransform(value: String): Matrix {
@@ -133,23 +133,27 @@ fun parseTransform(value: String): Matrix {
                 scale(parsedValues[0], parsedValues.getOrNull(1) ?: parsedValues[0])
             }
             "rotate" -> matrix.apply {
-                rotateX(parsedValues[0])
-                rotateY(parsedValues[1])
-                rotateZ(parsedValues[2])
+                if (parsedValues.size == 3) {
+                    val cx = parsedValues[1]
+                    val cy = parsedValues[2]
+                    translate(cx, cy)
+                    rotateZ(parsedValues[0])
+                    translate(-cx, -cy)
+                } else {
+                    rotateZ(parsedValues[0])
+                }
             }
             else -> error("Unknown transform operation: $operation")
         }
     }
 }
 
-interface Element
+interface SvgElement
 
-data class Document(
+data class SvgDocument(
     val version: Version,
     val viewBox: Rect,
-    val width: Float,
-    val height: Float,
-    val children: List<Element>
+    val children: List<SvgElement>
 ) {
     enum class Version {
         v1_1
@@ -157,29 +161,27 @@ data class Document(
 }
 
 data class Group(
-    val children: List<Element>,
-    val strokeLineCap: StrokeLineCap = StrokeLineCap.Butt,
+    val children: List<SvgElement>,
+    val strokeLineCap: StrokeLineCap?,
     val transform: Matrix
-) : Element {
-    enum class StrokeLineCap {
-        Butt,
-        Round,
-        Square
-    }
-}
+) : SvgElement
 
 data class Path(
     val data: List<PathElement>,
-    val strokeColor: Color,
+    val stroke: Color?,
     val strokeWidth: Float,
     val fill: Color?,
-) : Element
+    val fillRule: FillRule?,
+    val clipRule: FillRule?
+) : SvgElement
 
+enum class StrokeLineCap {
+    Butt,
+    Round,
+    Square
+}
 
-fun String.debugString(offset: Int) =
-    buildString {
-        val data = this@debugString
-        append(data.substring((offset - 15).coerceAtLeast(0), offset))
-        append("|")
-        append(data.substring(offset, (offset + 15).coerceAtMost(data.length)))
-    }
+enum class FillRule {
+    EvenOdd,
+    NonZero
+}
