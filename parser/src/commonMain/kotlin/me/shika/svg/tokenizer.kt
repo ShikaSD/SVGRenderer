@@ -1,3 +1,5 @@
+package me.shika.svg
+
 data class Token(
     val type: TokenType,
     // Inclusive

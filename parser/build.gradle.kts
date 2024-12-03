@@ -2,10 +2,6 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
 }
 
-repositories {
-    google()
-    mavenCentral()
-}
 kotlin {
     jvm("desktop")
 

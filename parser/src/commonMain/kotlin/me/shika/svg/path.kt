@@ -1,11 +1,14 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
+package me.shika.svg
+
 import androidx.compose.ui.graphics.vector.nextFloat
 
 sealed interface PathElement {
     data class MoveTo(val x: Float, val y: Float) : PathElement
     data class LineTo(val x: Float, val y: Float) : PathElement
-    data class CurveTo(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val x: Float, val y: Float) : PathElement
+    data class CurveTo(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val x: Float, val y: Float) :
+        PathElement
     data object Close : PathElement
 }
 

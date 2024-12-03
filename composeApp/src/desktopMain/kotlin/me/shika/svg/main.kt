@@ -2,6 +2,7 @@ package me.shika.svg
 
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import org.jetbrains.compose.reload.DevelopmentEntryPoint
 import org.jetbrains.compose.resources.getResourceUri
 
 fun main() = application {
@@ -10,6 +11,8 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "SVGRenderer",
     ) {
-        App(sampleSVG)
+        DevelopmentEntryPoint {
+            App(sampleSVG)
+        }
     }
 }

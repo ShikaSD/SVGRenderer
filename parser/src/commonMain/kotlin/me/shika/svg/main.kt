@@ -1,3 +1,5 @@
+package me.shika.svg
+
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
@@ -58,7 +60,7 @@ fun ParsedTag.expectAttributeValue(name: String, value: String) {
     }
 }
 
-fun convertToElement(parsed: ParsedTag): Element? =
+private fun convertToElement(parsed: ParsedTag): Element? =
     when(parsed.name) {
         "g" -> {
             parsed.attributes.forEach { (k, _) ->

@@ -1,4 +1,4 @@
-
+package me.shika.svg
 sealed interface ParsedElement
 
 data class ParsedTag(
