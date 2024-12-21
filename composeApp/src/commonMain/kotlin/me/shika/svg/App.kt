@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -57,42 +58,36 @@ fun DrawScope.drawElement(e: SvgElement, context: SvgDrawContext) {
             val graphicsPath = androidx.compose.ui.graphics.Path()
             var currentX = 0f
             var currentY = 0f
-            for (p in e.data) {
+            for (p in e.data.take(100)) {
                 when (p) {
                     is PathElement.MoveTo -> {
-                        if (p.relative) {
-                            graphicsPath.relativeMoveTo(p.x, p.y)
-                            currentX += p.x
-                            currentY += p.y
-                        } else {
-                            graphicsPath.moveTo(p.x, p.y)
-                            currentX = p.x
-                            currentY = p.y
-                        }
+                        val endX = p.x + if (p.relative) currentX else 0f
+                        val endY = p.y + if (p.relative) currentY else 0f
+                        graphicsPath.moveTo(endX, endY)
+                        currentX = endX
+                        currentY = endY
                     }
 
                     is PathElement.CurveTo -> {
-                        if (p.relative) {
-                            graphicsPath.relativeCubicTo(p.x1, p.y1, p.x2, p.y2, p.x, p.y)
-                            currentX += p.x
-                            currentY += p.y
-                        } else {
-                            graphicsPath.cubicTo(p.x1, p.y1, p.x2, p.y2, p.x, p.y)
-                            currentX = p.x
-                            currentY = p.y
-                        }
+                        val controlX1 = p.x1 + if (p.relative) currentX else 0f
+                        val controlY1 = p.y1 + if (p.relative) currentY else 0f
+                        val controlX2 = p.x2 + if (p.relative) currentX else 0f
+                        val controlY2 = p.y2 + if (p.relative) currentY else 0f
+                        val endX = p.x + if (p.relative) currentX else 0f
+                        val endY = p.y + if (p.relative) currentY else 0f
+                        graphicsPath.cubicTo(controlX1, controlY1, controlX2, controlY2, endX, endY)
+                        currentX = endX
+                        currentY = endY
                     }
 
                     is PathElement.LineTo -> {
-                        if (p.relative) {
-                            graphicsPath.relativeLineTo(p.x, p.y)
-                            currentX += p.x
-                            currentY += p.y
-                        } else {
-                            graphicsPath.lineTo(p.x, p.y)
-                            currentX = p.x
-                            currentY = p.y
-                        }
+                        val startX = if (p.x.isNaN()) (if (p.relative) 0f else currentX) else p.x
+                        val startY = if (p.y.isNaN()) (if (p.relative) 0f else currentY) else p.y
+                        val endX = startX + if (p.relative) currentX else 0f
+                        val endY = startY + if (p.relative) currentY else 0f
+                        graphicsPath.lineTo(endX, endY)
+                        currentX = endX
+                        currentY = endY
                     }
 
                     is PathElement.ArcTo -> {
@@ -118,6 +113,10 @@ fun DrawScope.drawElement(e: SvgElement, context: SvgDrawContext) {
                         graphicsPath.close()
                     }
                 }
+            }
+            graphicsPath.fillType = when (e.fillRule) {
+                FillRule.EvenOdd -> PathFillType.EvenOdd
+                FillRule.NonZero, null -> PathFillType.NonZero
             }
             if (e.fill != null) {
                 drawPath(graphicsPath, color = e.fill!!)

@@ -71,14 +71,14 @@ fun parsePathData(data: String): List<PathElement> {
                 offset = skipWsp(data, offset + 1)
                 val (x, endX) = expectFloat(data, offset)
                 offset = skipWsp(data, endX)
-                segments.add(PathElement.LineTo(x, 0f, relative = op == 'h'))
+                segments.add(PathElement.LineTo(x, Float.NaN, relative = op == 'h'))
             }
 
             'V', 'v' -> {
                 offset = skipWsp(data, offset + 1)
                 val (y, endY) = expectFloat(data, offset)
                 offset = skipWsp(data, endY)
-                segments.add(PathElement.LineTo(0f, y, relative = op == 'v'))
+                segments.add(PathElement.LineTo(Float.NaN, y, relative = op == 'v'))
             }
 
             'C', 'c' -> {
@@ -162,8 +162,8 @@ private fun expectFloat(data: String, offset: Int): Long {
 
 private fun expectFlag(data: String, offset: Int): Boolean =
     when (data[offset]) {
-        '0' -> true
-        '1' -> false
+        '0' -> false
+        '1' -> true
         else -> error("Expected flag value at ${data.debugString(offset)}")
     }
 
