@@ -112,12 +112,42 @@ private fun parseFillRule(value: String): FillRule =
 
 @OptIn(ExperimentalStdlibApi::class)
 fun parseColor(value: String): Color {
-    require(value.startsWith("#") && value.length == 7) { "Expected a hex string, but got $value" }
-    val r = value.substring(1, 3).hexToInt()
-    val g = value.substring(3, 5).hexToInt()
-    val b = value.substring(5, 7).hexToInt()
-    return Color(r, g, b)
+    require(value.startsWith("#")) { "Expected a hex string, but got $value" }
+    when (value.length) {
+        7 -> {
+            val r1 = parseHexDigit(value[1])
+            val r2 = parseHexDigit(value[2])
+            val g1 = parseHexDigit(value[3])
+            val g2 = parseHexDigit(value[4])
+            val b1 = parseHexDigit(value[5])
+            val b2 = parseHexDigit(value[6])
+            return Color(
+                (r1 shl 4) or r2,
+                (g1 shl 4) or g2,
+                (b1 shl 4) or b2,
+            )
+        }
+        4 -> {
+            val r = parseHexDigit(value[1])
+            val g = parseHexDigit(value[2])
+            val b = parseHexDigit(value[3])
+            return Color(
+                (r shl 4) or r,
+                (g shl 4) or g,
+                (b shl 4) or b,
+            )
+        }
+        else -> error("Unknown color format: $value")
+    }
 }
+
+fun parseHexDigit(c: Char): Int =
+    when (c) {
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' -> c - '0'
+        'a', 'b', 'c', 'd', 'e', 'f' -> c - 'a' + 10
+        'A', 'B', 'C', 'D', 'E', 'F' -> c - 'A' + 10
+        else -> error("Invalid hex digit: $c")
+    }
 
 fun parseTransform(value: String): Matrix {
     val transformRegex = "([a-z]+)\\(([0-9. ]+)\\)".toRegex()
