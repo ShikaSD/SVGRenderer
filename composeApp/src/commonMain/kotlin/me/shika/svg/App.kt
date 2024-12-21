@@ -55,18 +55,63 @@ fun DrawScope.drawElement(e: SvgElement, context: SvgDrawContext) {
         }
         is Path -> {
             val graphicsPath = androidx.compose.ui.graphics.Path()
-            for (pathEl in e.data) {
-                when (pathEl) {
+            var currentX = 0f
+            var currentY = 0f
+            for (p in e.data) {
+                when (p) {
                     is PathElement.MoveTo -> {
-                        graphicsPath.moveTo(pathEl.x, pathEl.y)
+                        if (p.relative) {
+                            graphicsPath.relativeMoveTo(p.x, p.y)
+                            currentX += p.x
+                            currentY += p.y
+                        } else {
+                            graphicsPath.moveTo(p.x, p.y)
+                            currentX = p.x
+                            currentY = p.y
+                        }
                     }
 
                     is PathElement.CurveTo -> {
-                        graphicsPath.cubicTo(pathEl.x1, pathEl.y1, pathEl.x2, pathEl.y2, pathEl.x, pathEl.y)
+                        if (p.relative) {
+                            graphicsPath.relativeCubicTo(p.x1, p.y1, p.x2, p.y2, p.x, p.y)
+                            currentX += p.x
+                            currentY += p.y
+                        } else {
+                            graphicsPath.cubicTo(p.x1, p.y1, p.x2, p.y2, p.x, p.y)
+                            currentX = p.x
+                            currentY = p.y
+                        }
                     }
 
                     is PathElement.LineTo -> {
-                        graphicsPath.lineTo(pathEl.x, pathEl.y)
+                        if (p.relative) {
+                            graphicsPath.relativeLineTo(p.x, p.y)
+                            currentX += p.x
+                            currentY += p.y
+                        } else {
+                            graphicsPath.lineTo(p.x, p.y)
+                            currentX = p.x
+                            currentY = p.y
+                        }
+                    }
+
+                    is PathElement.ArcTo -> {
+                        val endX = p.x + if (p.relative) currentX else 0f
+                        val endY = p.y + if (p.relative) currentY else 0f
+                        drawArc(
+                            graphicsPath,
+                            currentX.toDouble(),
+                            currentY.toDouble(),
+                            endX.toDouble(),
+                            endY.toDouble(),
+                            p.rx.toDouble(),
+                            p.ry.toDouble(),
+                            p.rotation.toDouble(),
+                            p.largeArc,
+                            p.sweep
+                        )
+                        currentX = endX
+                        currentY = endY
                     }
 
                     PathElement.Close -> {
