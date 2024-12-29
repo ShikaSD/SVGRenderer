@@ -52,7 +52,9 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
             parsed.attributes.forEach { (k, _) ->
                 when(k) {
                     "stroke-linecap",
-                    "transform" -> {}
+                    "transform",
+                        -> {
+                    }
                     else -> {
                         error("Unknown attribute: $k")
                     }
@@ -83,7 +85,10 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                     "stroke-width",
                     "fill",
                     "fill-rule",
-                    "clip-rule" -> {}
+                    "clip-rule",
+                    "stroke-linecap",
+                    "stroke-linejoin" -> {
+                    }
                     else -> {
                         error("Unknown attribute: $k")
                     }
@@ -93,13 +98,121 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                 data = parsePathData(parsed.expectAttribute("d")),
                 stroke = parsed.attributes["stroke"]?.takeIf { it != "none" }?.let { parseColor(it) },
                 strokeWidth = parsed.attributes["stroke-width"]?.toFloat() ?: 1f,
+                strokeLineCap = parsed.attributes["stroke-linecap"]?.let {
+                    when (it) {
+                        "round" -> StrokeLineCap.Round
+                        "square" -> StrokeLineCap.Square
+                        "butt" -> StrokeLineCap.Butt
+                        else -> error("Unknown stroke-linecap value: $it")
+                    }
+                },
+                strokeLineJoin = parsed.attributes["stroke-linejoin"]?.let {
+                    when (it) {
+                        "round" -> StrokeLineJoin.Round
+                        "bevel" -> StrokeLineJoin.Bevel
+                        "miter" -> StrokeLineJoin.Miter
+                        else -> error("Unknown stroke-linejoin value: $it")
+                    }
+                },
                 fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) },
                 fillRule = parsed.attributes["fill-rule"]?.let { parseFillRule(it) },
                 clipRule = parsed.attributes["clip-rule"]?.let { parseFillRule(it) }
             )
         }
+        "rect" -> {
+            parsed.attributes.forEach { (k, _) ->
+                when(k) {
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "rx",
+                    "ry",
+                    "stroke",
+                    "stroke-width",
+                    "fill",
+                    "fill-rule",
+                    "clip-rule",
+                        -> {
+                    }
+                    else -> {
+                        error("Unknown attribute: $k")
+                    }
+                }
+            }
+
+            val x = parsed.expectAttribute("x").toFloat()
+            val y = parsed.expectAttribute("y").toFloat()
+            val width = parsed.expectAttribute("width").toFloat()
+            val height = parsed.expectAttribute("height").toFloat()
+            val rx = parsed.attributes["rx"]?.toFloat() ?: 0f
+            val ry = parsed.attributes["ry"]?.toFloat() ?: 0f
+
+            Path(
+                data = buildList {
+                    fun arc(x: Float, y: Float, rx: Float, ry: Float) =
+                        PathElement.ArcTo(
+                            rx = rx,
+                            ry = ry,
+                            rotation = 0f,
+                            largeArc = false,
+                            sweep = true,
+                            x = x,
+                            y = y,
+                            relative = false
+                        )
+
+                    add(PathElement.MoveTo(x, y, relative = false))
+                    add(PathElement.LineTo(x + width - rx, y, relative = false))
+
+                    if (rx > 0 && ry > 0) {
+                        add(arc(x + width, y + ry, rx, ry))
+                    }
+
+                    add(PathElement.LineTo(x + width,y + height - ry, relative = false))
+
+                    if (rx > 0 && ry > 0) {
+                        add(arc(x + width - rx, y + height, rx, ry))
+                    }
+
+                    add(PathElement.LineTo(x + rx,y + height, relative = false))
+                    if (rx > 0 && ry > 0) {
+                        add(arc(x, y + height - ry, rx, ry))
+                    }
+
+                    add(PathElement.LineTo(x, y + ry, relative = false))
+                    if (rx > 0 && ry > 0) {
+                        add(arc(x + rx, y, rx, ry))
+                    }
+
+                    add(PathElement.Close)
+                },
+                stroke = parsed.attributes["stroke"]?.takeIf { it != "none" }?.let { parseColor(it) },
+                strokeWidth = parsed.attributes["stroke-width"]?.toFloat() ?: 1f,
+                fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) },
+                fillRule = parsed.attributes["fill-rule"]?.let { parseFillRule(it) },
+                clipRule = parsed.attributes["clip-rule"]?.let { parseFillRule(it) },
+                strokeLineCap = parsed.attributes["stroke-linecap"]?.let {
+                    when (it) {
+                        "round" -> StrokeLineCap.Round
+                        "square" -> StrokeLineCap.Square
+                        "butt" -> StrokeLineCap.Butt
+                        else -> error("Unknown stroke-linecap value: $it")
+                    }
+                },
+                strokeLineJoin = parsed.attributes["stroke-linejoin"]?.let {
+                    when (it) {
+                        "round" -> StrokeLineJoin.Round
+                        "bevel" -> StrokeLineJoin.Bevel
+                        "miter" -> StrokeLineJoin.Miter
+                        else -> error("Unknown stroke-linejoin value: $it")
+                    }
+                },
+            )
+        }
         "defs",
-        "mask" -> null
+        "mask",
+            -> null
         else -> error("Unknown tag: $parsed")
     }
 
@@ -112,7 +225,7 @@ private fun parseFillRule(value: String): FillRule =
 
 @OptIn(ExperimentalStdlibApi::class)
 fun parseColor(value: String): Color {
-    require(value.startsWith("#")) { "Expected a hex string, but got $value" }
+    require(value.startsWith('#')) { "Expected a hex string, but got $value" }
     when (value.length) {
         7 -> {
             val r1 = parseHexDigit(value[1])
@@ -183,7 +296,7 @@ interface SvgElement
 data class SvgDocument(
     val version: Version,
     val viewBox: Rect,
-    val children: List<SvgElement>
+    val children: List<SvgElement>,
 ) {
     enum class Version {
         v1_1
@@ -193,7 +306,7 @@ data class SvgDocument(
 data class Group(
     val children: List<SvgElement>,
     val strokeLineCap: StrokeLineCap?,
-    val transform: Matrix
+    val transform: Matrix,
 ) : SvgElement
 
 data class Path(
@@ -201,14 +314,22 @@ data class Path(
     val stroke: Color?,
     val strokeWidth: Float,
     val fill: Color?,
+    val strokeLineCap: StrokeLineCap?,
+    val strokeLineJoin: StrokeLineJoin?,
     val fillRule: FillRule?,
-    val clipRule: FillRule?
+    val clipRule: FillRule?,
 ) : SvgElement
 
 enum class StrokeLineCap {
     Butt,
     Round,
     Square
+}
+
+enum class StrokeLineJoin {
+    Miter,
+    Round,
+    Bevel
 }
 
 enum class FillRule {

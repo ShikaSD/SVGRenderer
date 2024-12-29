@@ -34,6 +34,13 @@ sealed interface PathElement {
         val y: Float,
         val relative: Boolean
     ) : PathElement
+    data class QuadTo(
+        val x1: Float,
+        val y1: Float,
+        val x: Float,
+        val y: Float,
+        val relative: Boolean
+    ) : PathElement
     data object Close : PathElement
 }
 
@@ -64,7 +71,7 @@ fun parsePathData(data: String): List<PathElement> {
 
             'L', 'l' -> {
                 offset = skipWsp(data, offset + 1)
-                parseLineTo(segments, data, offset, relative = op == 'l')
+                offset = parseLineTo(segments, data, offset, relative = op == 'l')
             }
 
             'H', 'h' -> {
@@ -83,45 +90,27 @@ fun parsePathData(data: String): List<PathElement> {
 
             'C', 'c' -> {
                 offset = skipWsp(data, offset + 1)
-                val (x1, endX1) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endX1)
-                val (y1, endY1) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endY1)
-                val (x2, endX2) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endX2)
-                val (y2, endY2) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endY2)
-                val (x, endX) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endX)
-                val (y, endY) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endY)
-                segments.add(PathElement.CurveTo(x1, y1, x2, y2, x, y, relative = op == 'c'))
+                offset = parseCurveTo(segments, data, offset, relative = op == 'c')
+            }
+
+            'S', 's' -> {
+                offset = skipWsp(data, offset + 1)
+                offset = parseSmoothCurveTo(segments, data, offset, relative = op == 's')
             }
 
             'A', 'a' -> {
                 offset = skipWsp(data, offset + 1)
-                val (rx, endRx) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endRx)
-                val (ry, endRy) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endRy)
-                val (rotation, endRotation) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endRotation)
-                val largeArc = expectFlag(data, offset)
-                offset = skipCommaWsp(data, offset + 1)
-                val sweep = expectFlag(data, offset)
-                offset = skipCommaWsp(data, offset + 1)
-                val (x, endX) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endX)
-                val (y, endY) = expectFloat(data, offset)
-                offset = skipCommaWsp(data, endY)
+                offset = parseArc(segments, data, offset, relative = op == 'a')
+            }
 
-                if (rx == 0f || ry == 0f) {
-                    segments.add(PathElement.LineTo(x, y, relative = op == 'a'))
-                } else {
-                    segments.add(
-                        PathElement.ArcTo(rx, ry, rotation, largeArc, sweep, x, y, relative = op == 'a')
-                    )
-                }
+            'Q', 'q' -> {
+                offset = skipWsp(data, offset + 1)
+                offset = parseQuadTo(segments, data, offset, relative = op == 'q')
+            }
+
+            'T', 't' -> {
+                offset = skipWsp(data, offset + 1)
+                offset = parseSmoothQuadTo(segments, data, offset, relative = op == 't')
             }
 
             'Z' -> {
@@ -129,7 +118,7 @@ fun parsePathData(data: String): List<PathElement> {
                 segments.add(PathElement.Close)
             }
 
-            else -> error("Unknown path segment: ${data.debugString(offset)}")
+            else -> error("Unexpected path segment: ${data.debugString(offset)}")
         }
     }
 
@@ -146,6 +135,118 @@ private fun parseLineTo(segments: MutableList<PathElement>, data: String, start:
         offset = skipCommaWsp(data, endLineY)
 
         segments.add(PathElement.LineTo(lineX, lineY, relative))
+
+        nextFloat = nextFloat(data, offset, data.length)
+    }
+    return offset
+}
+
+private fun parseArc(segments: MutableList<PathElement>, data: String, start: Int, relative: Boolean): Int {
+    var offset = start
+    var nextFloat = nextFloat(data, offset, data.length)
+    while (!nextFloat.floatValue.isNaN()) {
+        val rx = nextFloat.floatValue
+        offset = skipCommaWsp(data, nextFloat.index)
+        val (ry, endRy) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endRy)
+        val (rotation, endRotation) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endRotation)
+        val largeArc = expectFlag(data, offset)
+        offset = skipCommaWsp(data, offset + 1)
+        val sweep = expectFlag(data, offset)
+        offset = skipCommaWsp(data, offset + 1)
+        val (x, endX) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endX)
+        val (y, endY) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY)
+
+        if (rx == 0f || ry == 0f) {
+            segments.add(PathElement.LineTo(x, y, relative))
+        } else {
+            segments.add(
+                PathElement.ArcTo(rx, ry, rotation, largeArc, sweep, x, y, relative)
+            )
+        }
+
+        nextFloat = nextFloat(data, offset, data.length)
+    }
+    return offset
+}
+
+private fun parseCurveTo(segments: MutableList<PathElement>, data: String, start: Int, relative: Boolean): Int {
+    var offset = start
+    var nextFloat = nextFloat(data, offset, data.length)
+    while (!nextFloat.floatValue.isNaN()) {
+        val x1 = nextFloat.floatValue
+        offset = skipCommaWsp(data, nextFloat.index)
+        val (y1, endY1) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY1)
+        val (x2, endX2) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endX2)
+        val (y2, endY2) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY2)
+        val (x, endX) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endX)
+        val (y, endY) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY)
+
+        segments.add(PathElement.CurveTo(x1, y1, x2, y2, x, y, relative))
+
+        nextFloat = nextFloat(data, offset, data.length)
+    }
+    return offset
+}
+
+private fun parseSmoothCurveTo(segments: MutableList<PathElement>, data: String, start: Int, relative: Boolean): Int {
+    var offset = start
+    var nextFloat = nextFloat(data, offset, data.length)
+    while (!nextFloat.floatValue.isNaN()) {
+        val x2 = nextFloat.floatValue
+        offset = skipCommaWsp(data, nextFloat.index)
+        val (y2, endY2) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY2)
+        val (x, endX) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endX)
+        val (y, endY) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY)
+
+        segments.add(PathElement.CurveTo(Float.NaN, Float.NaN, x2, y2, x, y, relative))
+
+        nextFloat = nextFloat(data, offset, data.length)
+    }
+    return offset
+}
+
+private fun parseQuadTo(segments: MutableList<PathElement>, data: String, start: Int, relative: Boolean): Int {
+    var offset = start
+    var nextFloat = nextFloat(data, offset, data.length)
+    while (!nextFloat.floatValue.isNaN()) {
+        val x1 = nextFloat.floatValue
+        offset = skipCommaWsp(data, nextFloat.index)
+        val (y1, endY1) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY1)
+        val (x, endX) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endX)
+        val (y, endY) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY)
+
+        segments.add(PathElement.QuadTo(x1, y1, x, y, relative))
+
+        nextFloat = nextFloat(data, offset, data.length)
+    }
+    return offset
+}
+
+private fun parseSmoothQuadTo(segments: MutableList<PathElement>, data: String, start: Int, relative: Boolean): Int {
+    var offset = start
+    var nextFloat = nextFloat(data, offset, data.length)
+    while (!nextFloat.floatValue.isNaN()) {
+        val x = nextFloat.floatValue
+        offset = skipCommaWsp(data, nextFloat.index)
+        val (y, endY) = expectFloat(data, offset)
+        offset = skipCommaWsp(data, endY)
+
+        segments.add(PathElement.QuadTo(Float.NaN, Float.NaN, x, y, relative))
 
         nextFloat = nextFloat(data, offset, data.length)
     }
