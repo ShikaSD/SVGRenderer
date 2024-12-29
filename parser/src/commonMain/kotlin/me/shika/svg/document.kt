@@ -145,8 +145,16 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
             val y = parsed.expectAttribute("y").toFloat()
             val width = parsed.expectAttribute("width").toFloat()
             val height = parsed.expectAttribute("height").toFloat()
-            val rx = parsed.attributes["rx"]?.toFloat() ?: 0f
-            val ry = parsed.attributes["ry"]?.toFloat() ?: 0f
+            var rx = parsed.attributes["rx"]?.toFloat()
+            var ry = parsed.attributes["ry"]?.toFloat()
+            if (rx == null && ry != null) {
+                rx = ry
+            } else if (ry == null && rx != null) {
+                ry = rx
+            } else {
+                rx = 0f
+                ry = 0f
+            }
 
             Path(
                 data = buildList {
@@ -165,23 +173,23 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                     add(PathElement.MoveTo(x, y, relative = false))
                     add(PathElement.LineTo(x + width - rx, y, relative = false))
 
-                    if (rx > 0 && ry > 0) {
+                    if (rx > 0 || ry > 0) {
                         add(arc(x + width, y + ry, rx, ry))
                     }
 
                     add(PathElement.LineTo(x + width,y + height - ry, relative = false))
 
-                    if (rx > 0 && ry > 0) {
+                    if (rx > 0 || ry > 0) {
                         add(arc(x + width - rx, y + height, rx, ry))
                     }
 
                     add(PathElement.LineTo(x + rx,y + height, relative = false))
-                    if (rx > 0 && ry > 0) {
+                    if (rx > 0 || ry > 0) {
                         add(arc(x, y + height - ry, rx, ry))
                     }
 
                     add(PathElement.LineTo(x, y + ry, relative = false))
-                    if (rx > 0 && ry > 0) {
+                    if (rx > 0 || ry > 0) {
                         add(arc(x + rx, y, rx, ry))
                     }
 
