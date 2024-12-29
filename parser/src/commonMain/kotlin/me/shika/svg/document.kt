@@ -147,13 +147,13 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
             val height = parsed.expectAttribute("height").toFloat()
             var rx = parsed.attributes["rx"]?.toFloat()
             var ry = parsed.attributes["ry"]?.toFloat()
-            if (rx == null && ry != null) {
-                rx = ry
-            } else if (ry == null && rx != null) {
-                ry = rx
-            } else {
+            if (rx == null && ry == null) {
                 rx = 0f
                 ry = 0f
+            } else if (rx == null) {
+                rx = ry!! // for some reason Kotlin cannot infer this
+            } else if (ry == null) {
+                ry = rx
             }
 
             Path(
