@@ -31,8 +31,12 @@ import java.nio.file.Files
 @Preview
 fun App() {
     val urls = Files.list(java.nio.file.Path.of("/Users/shika/projects/social-app/assets/icons")).map { it.toUri() }.toList()
+    val svgUrls = listOf(
+        URI("https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg"),
+        URI("https://upload.wikimedia.org/wikipedia/commons/6/6b/Bitmap_VS_SVG.svg"),
+    )
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        urls.sorted().forEach {
+        svgUrls.sorted().forEach {
             Text(it.toString())
             Box(Modifier.size(128.dp)) {
                 RenderSvg(it)
@@ -58,13 +62,14 @@ fun RenderSvg(uri: URI) {
     }
     if (document != null) {
         Canvas(Modifier.fillMaxSize()) {
+            val context = DrawContext()
             withTransform({
                 val scaleX = size.width / document.viewBox.width
                 val scaleY = size.height / document.viewBox.height
                 scale(scaleX, scaleY, pivot = Offset.Zero)
             }) {
                 for (child in document.children) {
-                    drawElement(child, SvgDrawContext())
+                    drawElement(child, context)
                 }
             }
         }
@@ -73,29 +78,39 @@ fun RenderSvg(uri: URI) {
     }
 }
 
-class SvgDrawContext(
-    var strokeLineCap: StrokeLineCap = StrokeLineCap.Butt,
-    var strokeLineJoin: StrokeLineJoin = StrokeLineJoin.Miter
-) {
-    inline fun withStrokeLineCap(new: StrokeLineCap?, block: () -> Unit) {
-        val old = strokeLineCap
-        strokeLineCap = new ?: old
-        block()
-        strokeLineCap = old
-    }
+class DrawContext(
+    var svgDrawContext: SvgDrawContext = SvgDrawContext()
+)
 
-    inline fun withStrokeLineJoin(new: StrokeLineJoin?, block: () -> Unit) {
-        val old = strokeLineJoin
-        strokeLineJoin = new ?: old
-        block()
-        strokeLineJoin = old
-    }
+data class SvgDrawContext(
+    val fill: Color? = null,
+    val stroke: Color? = null,
+    val strokeLineCap: StrokeLineCap = StrokeLineCap.Butt,
+    val strokeLineJoin: StrokeLineJoin = StrokeLineJoin.Miter
+)
+
+private inline fun DrawContext.mutate(
+    mutate: (SvgDrawContext) -> SvgDrawContext,
+    block: () -> Unit
+) {
+    val oldContext = svgDrawContext
+    svgDrawContext = mutate(oldContext)
+    block()
+    svgDrawContext = oldContext
 }
-fun DrawScope.drawElement(e: SvgElement, context: SvgDrawContext) {
+
+fun DrawScope.drawElement(e: SvgElement, context: DrawContext) {
     when (e) {
         is Group -> {
             withTransform({ transform(e.transform) }) {
-                context.withStrokeLineCap(e.strokeLineCap) {
+                context.mutate({
+                    it.copy(
+                        fill = e.fill ?: context.svgDrawContext.fill,
+                        stroke = e.stroke ?: context.svgDrawContext.stroke,
+                        strokeLineCap = e.strokeLineCap ?: context.svgDrawContext.strokeLineCap,
+                        strokeLineJoin = e.strokeLineJoin ?: context.svgDrawContext.strokeLineJoin
+                    )
+                }) {
                     for (child in e.children) {
                         drawElement(child, context)
                     }
@@ -103,8 +118,14 @@ fun DrawScope.drawElement(e: SvgElement, context: SvgDrawContext) {
             }
         }
         is Path -> {
-            context.withStrokeLineCap(e.strokeLineCap) {
-                drawPath(e, context)
+            context.mutate({
+                it.copy(
+                    fill = e.fill ?: context.svgDrawContext.fill,
+                    stroke = e.stroke ?: context.svgDrawContext.stroke,
+                    strokeLineCap = e.strokeLineCap ?: context.svgDrawContext.strokeLineCap,
+                    strokeLineJoin = e.strokeLineJoin ?: context.svgDrawContext.strokeLineJoin
+                ) }) {
+                drawPath(e, context.svgDrawContext)
             }
         }
     }
@@ -216,10 +237,10 @@ fun DrawScope.drawPath(e: Path, context: SvgDrawContext) {
         FillRule.EvenOdd -> PathFillType.EvenOdd
         FillRule.NonZero, null -> PathFillType.NonZero
     }
-    if (e.fill != null) {
-        drawPath(graphicsPath, color = e.fill!!)
+    if (context.fill != null) {
+        drawPath(graphicsPath, color = context.fill)
     }
-    if (e.stroke != null) {
+    if (context.stroke != null) {
         val strokeLineCap = when (context.strokeLineCap) {
             StrokeLineCap.Butt -> StrokeCap.Butt
             StrokeLineCap.Round -> StrokeCap.Round
@@ -232,7 +253,7 @@ fun DrawScope.drawPath(e: Path, context: SvgDrawContext) {
         }
         drawPath(
             path = graphicsPath,
-            color = e.stroke!!,
+            color = context.stroke,
             style = Stroke(e.strokeWidth, cap = strokeLineCap, join = strokeLineJoin)
         )
     }

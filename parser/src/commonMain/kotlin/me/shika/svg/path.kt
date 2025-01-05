@@ -113,7 +113,7 @@ fun parsePathData(data: String): List<PathElement> {
                 offset = parseSmoothQuadTo(segments, data, offset, relative = op == 't')
             }
 
-            'Z' -> {
+            'Z', 'z' -> {
                 offset = skipWsp(data, offset + 1)
                 segments.add(PathElement.Close)
             }

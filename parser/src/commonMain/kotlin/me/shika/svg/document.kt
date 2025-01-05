@@ -54,7 +54,7 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                 when(k) {
                     "stroke-linecap",
                     "transform",
-                        -> {
+                    "fill" -> {
                     }
                     else -> {
                         error("Unknown attribute: $k")
@@ -75,7 +75,16 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                     null -> null
                     else -> error("Unknown stroke-linecap value: $parsed")
                 },
-                transform = parsed.attributes["transform"]?.let { parseTransform(it) } ?: Matrix()
+                strokeLineJoin = when (parsed.attributes["stroke-linejoin"]) {
+                    "round" -> StrokeLineJoin.Round
+                    "bevel" -> StrokeLineJoin.Bevel
+                    "miter" -> StrokeLineJoin.Miter
+                    null -> null
+                    else -> error("Unknown stroke-linejoin value: $parsed")
+                },
+                transform = parsed.attributes["transform"]?.let { parseTransform(it) } ?: Matrix(),
+                fill = parsed.attributes["fill"]?.let { parseColor(it) },
+                stroke = parsed.attributes["stroke"]?.let { parseColor(it) }
             )
         }
         "path" -> {
@@ -142,8 +151,8 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                 }
             }
 
-            val x = parsed.expectAttribute("x").toFloat()
-            val y = parsed.expectAttribute("y").toFloat()
+            val x = parsed.attributes["x"]?.toFloat() ?: 0f
+            val y = parsed.attributes["y"]?.toFloat() ?: 0f
             val width = parsed.expectAttribute("width").toFloat()
             val height = parsed.expectAttribute("height").toFloat()
             var rx = parsed.attributes["rx"]?.toFloat()
@@ -219,9 +228,24 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                 },
             )
         }
+        "a" -> {
+            Group(
+                children = parsed.children.mapNotNull {
+                    when (it) {
+                        is ParsedComment, is ParsedText -> null
+                        is ParsedTag -> convertToElement(it)
+                    }
+                },
+                strokeLineCap = null,
+                strokeLineJoin = null,
+                fill = null,
+                stroke = null,
+                transform = Matrix()
+            )
+        }
         "defs",
         "mask",
-            -> null
+        "title" -> null
         else -> error("Unknown tag: $parsed")
     }
 
@@ -314,7 +338,10 @@ data class SvgDocument(
 
 data class Group(
     val children: List<SvgElement>,
+    val fill: Color?,
+    val stroke: Color?,
     val strokeLineCap: StrokeLineCap?,
+    val strokeLineJoin: StrokeLineJoin?,
     val transform: Matrix,
 ) : SvgElement
 
