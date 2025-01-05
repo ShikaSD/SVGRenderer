@@ -5,15 +5,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
-import com.android.ide.common.rendering.api.SessionParams
 import org.junit.Rule
 import org.junit.Test
 
+/* NOTE: By default this runs tests and not the screenshot tests.
+ * To run the screenshot tests, you need to run the following command:
+ * ./gradlew :renderer:verifyPaparazziRelease
+ */
 class ScreenshotTests {
     @get:Rule
     val paparazzi = Paparazzi(
         deviceConfig = DeviceConfig.PIXEL,
         theme = "android:Theme.Material.Light.NoActionBar",
+        maxPercentDifference = 0.0
     )
 
     @Test
@@ -39,7 +43,7 @@ class ScreenshotTests {
     }
 
     @Test
-    fun svgRountRect() {
+    fun svgRoundRect() {
         testSvg(
             """
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
