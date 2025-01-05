@@ -37,3 +37,4 @@ plugins {
 include(":composeApp")
 include(":parser")
 include(":renderer")
+include(":benchmark")
