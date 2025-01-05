@@ -23,12 +23,12 @@ import java.nio.file.Files
 @Preview
 fun App() {
     val urls = Files.list(java.nio.file.Path.of("/Users/shika/projects/social-app/assets/icons")).map { it.toUri() }.toList()
-    val svgUrls = listOf(
-        URI("https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg"),
-        URI("https://upload.wikimedia.org/wikipedia/commons/6/6b/Bitmap_VS_SVG.svg"),
-    )
+//    val svgUrls = listOf(
+//        URI("https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg"),
+//        URI("https://upload.wikimedia.org/wikipedia/commons/6/6b/Bitmap_VS_SVG.svg"),
+//    )
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        svgUrls.sorted().forEach {
+        urls.sorted().forEach {
             Text(it.toString())
             Box(Modifier.size(128.dp)) {
                 val svgText = it.toURL().readText()
