@@ -1,4 +1,4 @@
-package me.shika.svg
+package me.shika.svg.renderer
 
 import kotlin.math.PI
 import kotlin.math.abs

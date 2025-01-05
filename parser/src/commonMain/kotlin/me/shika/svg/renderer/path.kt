@@ -1,6 +1,6 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
 
-package me.shika.svg
+package me.shika.svg.renderer
 
 import androidx.compose.ui.graphics.vector.nextFloat
 

@@ -1,4 +1,4 @@
-package me.shika.svg
+package me.shika.svg.renderer
 
 fun main () {
     val svgText = SVG.javaClass.classLoader.getResourceAsStream("sample.svg")?.reader()?.readText().orEmpty()

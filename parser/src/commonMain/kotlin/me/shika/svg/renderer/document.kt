@@ -1,9 +1,15 @@
-package me.shika.svg
+package me.shika.svg.renderer
 
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Matrix
 
+fun parseSvg(svg: String): SvgDocument {
+    val tokens = tokenize(svg)
+    val parserState = ParserState(tokens, svg)
+    val parsedRoot = parserState.parseNextElement() as ParsedTag
+    return convertToDocument(parsedRoot)
+}
 
 fun convertToDocument(root: ParsedTag): SvgDocument {
     root.expectName("svg")
