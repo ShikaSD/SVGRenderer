@@ -24,6 +24,7 @@ fun convertToDocument(root: ParsedTag): SvgDocument {
         children = root.children.mapNotNull {
             when (it) {
                 is ParsedComment -> null
+                is ParsedText -> null
                 is ParsedTag -> convertToElement(it)
             }
         }
@@ -63,7 +64,7 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
             Group(
                 children = parsed.children.mapNotNull {
                     when (it) {
-                        is ParsedComment -> null
+                        is ParsedComment, is ParsedText -> null
                         is ParsedTag -> convertToElement(it)
                     }
                 },

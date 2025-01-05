@@ -15,30 +15,60 @@ enum class TokenType {
     Identifier,
     Equal,
     StringLiteral,
-    Colon,
     Comment,
+    Text,
     Eof
 }
 fun tokenize(svg: String): List<Token> = buildList {
     var offset = 0
+    var insideTag = false
     while (offset < svg.length) {
         when (svg[offset]) {
             '<' -> {
                 when(svg[offset + 1]) {
                     '!' -> {
-                        val token = comment(offset, svg)
-                        offset = token.endOffset - 1
-                        add(token)
+                        when(svg[offset + 2]) {
+                            '-' -> {
+                                val token = comment(offset, svg)
+                                offset = token.endOffset - 1
+                                add(token)
+                            }
+                            'd', 'D' -> {
+                                // todo: validate doctype is svg
+                                // skip doctype
+                                while (offset < svg.length) {
+                                    if (svg[offset] == '>') {
+                                        break
+                                    }
+                                    offset++
+                                }
+                            }
+                            else -> lexerError(offset, svg)
+                        }
+                    }
+                    '?' -> {
+                        // Skip XML prolog
+                        offset += 2
+                        while (offset < svg.length - 1) {
+                            if (svg[offset] == '?' && svg[offset + 1] == '>') {
+                                offset++
+                                break
+                            }
+                            offset++
+                        }
                     }
                     else -> {
+                        insideTag = true
                         add(Token(TokenType.AngleBracketOpen, offset, offset + 1))
                     }
                 }
             }
-            '>' -> add(Token(TokenType.AngleBracketClose, offset, offset + 1))
+            '>' -> {
+                insideTag = false
+                add(Token(TokenType.AngleBracketClose, offset, offset + 1))
+            }
             '/' -> add(Token(TokenType.ForwardSlash, offset, offset + 1))
             '=' -> add(Token(TokenType.Equal, offset, offset + 1))
-            ':' -> add(Token(TokenType.Colon, offset, offset + 1))
             '"' -> {
                 val start = offset
                 offset++
@@ -69,12 +99,24 @@ fun tokenize(svg: String): List<Token> = buildList {
                 offset-- // we are at the first non-whitespace character
             }
             else -> {
-                val identifier = identifier(offset, svg)
-                if (identifier != null) {
-                    add(identifier)
-                    offset = identifier.endOffset - 1
+                if (insideTag) {
+                    val identifier = identifier(offset, svg)
+                    if (identifier != null) {
+                        add(identifier)
+                        offset = identifier.endOffset - 1
+                    } else {
+                        lexerError(offset, svg)
+                    }
                 } else {
-                    lexerError(offset, svg)
+                    val start = offset
+                    while (offset < svg.length) {
+                        if (svg[offset] == '<') {
+                            break
+                        }
+                        offset++
+                    }
+                    add(Token(TokenType.Text, start, offset))
+                    offset-- // we are at the opening angle bracket
                 }
             }
         }
@@ -112,7 +154,7 @@ private fun identifier(start: Int, svg: String): Token? {
     if (svg[offset].isLetter()) {
         offset++
         while (offset < svg.length) {
-            if (svg[offset].isLetterOrDigit() || svg[offset] == '-') {
+            if (svg[offset].isLetterOrDigit() || svg[offset] == '-' || svg[offset] == ':' ) {
                 offset++
             } else {
                 break

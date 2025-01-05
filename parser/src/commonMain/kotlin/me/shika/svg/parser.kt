@@ -9,6 +9,8 @@ data class ParsedTag(
 
 data class ParsedComment(val content: String) : ParsedElement
 
+data class ParsedText(val content: String) : ParsedElement
+
 fun ParsedElement.print(indent: Int) {
     when (this) {
         is ParsedTag -> {
@@ -17,6 +19,9 @@ fun ParsedElement.print(indent: Int) {
             printIndented(indent, "</$name>")
         }
         is ParsedComment -> {
+            printIndented(indent, "<!-- $content -->")
+        }
+        is ParsedText -> {
             printIndented(indent, content)
         }
     }
@@ -52,15 +57,17 @@ class ParserState(val tokens: List<Token>, val svg: String) {
     }
 
     fun parseError(token: Token, message: String = "Unexpected token"): Nothing =
-        error("$message at ${token}, text: ${svg.debugString(offset)}")
+        error("$message at ${token}, text: ${svg.debugString(token.startOffset)}")
 }
 
 fun ParserState.parseNextElement(): ParsedElement? {
-
     val openingToken = next() ?: error("Expected a token when starting element")
     when (openingToken.type) {
         TokenType.Comment -> {
             return ParsedComment(svg.substring(openingToken.startOffset, openingToken.endOffset))
+        }
+        TokenType.Text -> {
+            return ParsedText(svg.substring(openingToken.startOffset, openingToken.endOffset))
         }
         TokenType.AngleBracketOpen -> {
             val token = next() ?: parseError(openingToken, "Expected a token after ")
