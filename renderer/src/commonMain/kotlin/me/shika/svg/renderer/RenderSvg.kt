@@ -7,8 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -18,14 +19,14 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 @Composable
 fun RenderSvg(document: SvgDocument, modifier: Modifier = Modifier) {
     Canvas(modifier.fillMaxSize()) {
-        val context = DrawContext()
-        withTransform({
-            // todo handle viewBox offsets
-            val width = document.width ?: size.width
-            val height = document.height ?: size.height
-            val viewBoxWidth = document.viewBox?.width ?: width
-            val viewBoxHeight = document.viewBox?.height ?: height
+        // todo handle viewBox offsets
+        val width = document.width ?: size.width
+        val height = document.height ?: size.height
+        val viewBoxWidth = document.viewBox?.width ?: width
+        val viewBoxHeight = document.viewBox?.height ?: height
 
+        val context = DrawContext(document.definitions, width, height)
+        withTransform({
             val scaleX = width / viewBoxWidth
             val scaleY = height / viewBoxHeight
             scale(scaleX, scaleY, pivot = Offset.Zero)
@@ -38,16 +39,27 @@ fun RenderSvg(document: SvgDocument, modifier: Modifier = Modifier) {
 }
 
 class DrawContext(
-    var svgDrawContext: SvgDrawContext = SvgDrawContext()
-)
+    definitions: List<SvgDefinition>,
+    width: Float,
+    height: Float
+) {
+    var svgDrawContext: SvgDrawContext = SvgDrawContext(
+        definitions = definitions,
+        width = width,
+        height = height
+    )
+}
 
 class SvgDrawContext(
-    val fill: Color? = null,
-    val stroke: Color? = null,
+    val fill: ColorDef? = null,
+    val stroke: ColorDef? = null,
     val strokeWidth: Float = 1f,
     val strokeLineCap: StrokeLineCap = StrokeLineCap.Butt,
     val strokeLineJoin: StrokeLineJoin = StrokeLineJoin.Miter,
     val fillRule: FillRule = FillRule.NonZero,
+    val definitions: List<SvgDefinition>,
+    val width: Float,
+    val height: Float,
 ) {
     fun merge(other: SvgGraphicsElement): SvgDrawContext {
         return SvgDrawContext(
@@ -56,14 +68,17 @@ class SvgDrawContext(
             strokeWidth = other.strokeWidth ?: strokeWidth,
             strokeLineCap = other.strokeLineCap ?: strokeLineCap,
             strokeLineJoin = other.strokeLineJoin ?: strokeLineJoin,
-            fillRule = other.fillRule ?: fillRule
+            fillRule = other.fillRule ?: fillRule,
+            definitions = definitions,
+            width = width,
+            height = height,
         )
     }
 }
 
 private inline fun DrawContext.mutate(
     mutate: (SvgDrawContext) -> SvgDrawContext,
-    block: () -> Unit
+    block: () -> Unit,
 ) {
     val oldContext = svgDrawContext
     svgDrawContext = mutate(oldContext)
@@ -82,16 +97,19 @@ fun DrawScope.drawElement(e: SvgElement, context: DrawContext) {
                 }
             }
         }
+
         is Path -> {
             context.mutate({ it.merge(e.graphics) }) {
                 drawPath(e, context.svgDrawContext)
             }
         }
+
         is Rect -> {
             context.mutate({ it.merge(e.graphics) }) {
                 drawRect(context, e)
             }
         }
+
         is Circle -> {
             context.mutate({ it.merge(e.graphics) }) {
                 drawCircle(context, e)
@@ -207,7 +225,7 @@ fun DrawScope.drawPath(e: Path, context: SvgDrawContext) {
         FillRule.NonZero -> PathFillType.NonZero
     }
     if (context.fill != null) {
-        drawPath(graphicsPath, color = context.fill)
+        drawPath(graphicsPath, brush = context.fill.toBrush(context))
     }
     if (context.stroke != null) {
         val strokeLineCap = when (context.strokeLineCap) {
@@ -222,7 +240,7 @@ fun DrawScope.drawPath(e: Path, context: SvgDrawContext) {
         }
         drawPath(
             path = graphicsPath,
-            color = context.stroke,
+            brush = context.stroke.toBrush(context),
             style = Stroke(context.strokeWidth, cap = strokeLineCap, join = strokeLineJoin)
         )
     }
@@ -237,7 +255,7 @@ private fun DrawScope.drawCircle(
         drawCircle(
             center = Offset(e.cx, e.cy),
             radius = e.r,
-            color = fill
+            brush = fill.toBrush(context.svgDrawContext)
         )
     }
     val stroke = context.svgDrawContext.stroke
@@ -245,7 +263,7 @@ private fun DrawScope.drawCircle(
         drawCircle(
             center = Offset(e.cx, e.cy),
             radius = e.r,
-            color = stroke,
+            brush = stroke.toBrush(context.svgDrawContext),
             style = Stroke(context.svgDrawContext.strokeWidth)
         )
     }
@@ -262,7 +280,7 @@ private fun DrawScope.drawRect(
             topLeft = Offset(e.x, e.y),
             cornerRadius = CornerRadius(e.rx, e.ry),
             size = Size(e.width, e.height),
-            color = fill,
+            brush = fill.toBrush(context.svgDrawContext),
         )
     }
     val stroke = context.svgDrawContext.stroke
@@ -271,8 +289,45 @@ private fun DrawScope.drawRect(
             topLeft = Offset(e.x, e.y),
             cornerRadius = CornerRadius(e.rx, e.ry),
             size = Size(e.width, e.height),
-            color = stroke,
+            brush = stroke.toBrush(context.svgDrawContext),
             style = Stroke(context.svgDrawContext.strokeWidth)
         )
+    }
+}
+
+private fun ColorDef.toBrush(context: SvgDrawContext): Brush {
+    return when (this) {
+        is ColorValue -> SolidColor(value)
+        is ColorReference -> toBrush(context)
+    }
+}
+
+private fun ColorReference.toBrush(context: SvgDrawContext): Brush {
+    val definition = context.definitions.find { it.id == id }
+    return when (definition) {
+        is SvgLinearGradient -> {
+            val x1 = definition.x1 ?: 0f
+            val y1 = definition.y1 ?: 0f
+            val x2 = definition.x2 ?: context.width
+            val y2 = definition.y2 ?: 0f
+            val start = Offset(x1, y1)
+            val end = Offset(x2, y2)
+            Brush.linearGradient(
+                colorStops = definition.stops.map {
+                    Pair(it.offset, it.color)
+                }.toTypedArray(),
+                start = start,
+                end = end,
+                tileMode = when (definition.spreadMethod) {
+                    SpreadMethod.Pad -> androidx.compose.ui.graphics.TileMode.Clamp
+                    SpreadMethod.Reflect -> androidx.compose.ui.graphics.TileMode.Mirror
+                    SpreadMethod.Repeat -> androidx.compose.ui.graphics.TileMode.Repeated
+                }
+            )
+        }
+
+        null -> {
+            error("Could not find definition with id #$id in ${context.definitions}")
+        }
     }
 }

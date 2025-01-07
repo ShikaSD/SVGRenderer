@@ -15,6 +15,13 @@ fun convertToDocument(root: ParsedTag): SvgDocument {
     root.expectName("svg")
     root.expectAttributeValue("xmlns", "http://www.w3.org/2000/svg")
 
+    val children = root.children.mapNotNull {
+        when (it) {
+            is ParsedComment, is ParsedText -> null
+            is ParsedTag -> convertToElement(it)
+        }
+    }
+
     return SvgDocument(
         version = SvgDocument.Version.v1_1,
         viewBox = root.attributes["viewBox"]?.split(" ")?.let { (x, y, width, height) ->
@@ -29,13 +36,14 @@ fun convertToDocument(root: ParsedTag): SvgDocument {
         },
         width = root.attributes["width"]?.toFloat(),
         height = root.attributes["height"]?.toFloat(),
-        children = root.children.mapNotNull {
-            when (it) {
-                is ParsedComment -> null
-                is ParsedText -> null
-                is ParsedTag -> convertToElement(it)
+        definitions = children.flatMap {
+            if (it is SvgDefinitions) {
+                it.definitions
+            } else {
+                emptyList()
             }
-        }
+        },
+        children = children.filter { it !is SvgDefinitions }
     )
 }
 
@@ -171,11 +179,81 @@ private fun convertToElement(parsed: ParsedTag): SvgElement? =
                 graphics = parseGraphicsElement(parsed)
             )
         }
-        "defs",
+        "defs" -> {
+            SvgDefinitions(
+                definitions = parsed.children.mapNotNull {
+                    when (it) {
+                        is ParsedComment, is ParsedText -> null
+                        is ParsedTag -> convertToDefinition(it)
+                    }
+                }
+            )
+        }
         "mask",
         "title" -> null
         else -> error("Unknown tag: $parsed")
     }
+
+private fun convertToDefinition(parsed: ParsedTag): SvgDefinition? =
+    when(parsed.name) {
+        "linearGradient" -> {
+            parsed.attributes.forEach { (k, _) ->
+                when(k) {
+                    "id",
+                    "x1",
+                    "y1",
+                    "x2",
+                    "y2",
+                    "gradientUnits",
+                    "spreadMethod" -> {}
+                    else -> {
+                        error("Unexpected attribute: $k")
+                    }
+                }
+            }
+
+            SvgLinearGradient(
+                id = parsed.expectAttribute("id"),
+                x1 = parsed.attributes["x1"]?.toFloat(),
+                y1 = parsed.attributes["y1"]?.toFloat(),
+                x2 = parsed.attributes["x2"]?.toFloat(),
+                y2 = parsed.attributes["y2"]?.toFloat(),
+                stops = parsed.children.mapNotNull {
+                    when (it) {
+                        is ParsedComment, is ParsedText -> null
+                        is ParsedTag -> convertToStop(it)
+                    }
+                },
+                spreadMethod = parsed.attributes["spreadMethod"]?.let {
+                    when (it) {
+                        "pad" -> SpreadMethod.Pad
+                        "reflect" -> SpreadMethod.Reflect
+                        "repeat" -> SpreadMethod.Repeat
+                        else -> error("Unknown spreadMethod value: $it")
+                    }
+                } ?: SpreadMethod.Pad
+            )
+        }
+        else -> error("Unknown definition: $parsed")
+    }
+
+private fun convertToStop(parsed: ParsedTag): SvgStop? {
+    parsed.expectName("stop")
+    parsed.attributes.forEach { (k, _) ->
+        when(k) {
+            "offset",
+            "stop-color" -> {}
+            else -> {
+                error("Unexpected attribute: $k")
+            }
+        }
+    }
+
+    return SvgStop(
+        offset = parsed.attributes["offset"]?.toFloat() ?: 0f,
+        color = parseColor(parsed.expectAttribute("stop-color"))
+    )
+}
 
 private fun parseFillRule(value: String): FillRule =
     when (value) {
@@ -184,7 +262,15 @@ private fun parseFillRule(value: String): FillRule =
         else -> error("Unknown fill-rule value: $value")
     }
 
-fun parseColor(value: String): Color {
+private fun parseColorDefinition(value: String): ColorDef {
+    if (value.startsWith("url(#")) {
+        // color reference url(#id)
+        return ColorReference(value.substring(5, value.length - 1))
+    }
+    return ColorValue(parseColor(value))
+}
+
+private fun parseColor(value: String): Color {
     if (value.isEmpty()) return Color.Transparent
     if (value[0] == '#') return parseHexColor(value)
     return parseKeywordColor(value)
@@ -287,7 +373,7 @@ private fun checkGraphicsAttributes(attribute: String): Boolean =
 
 private fun parseGraphicsElement(parsed: ParsedTag) =
     SvgGraphicsElement(
-        stroke = parsed.attributes["stroke"]?.takeIf { it != "none" }?.let { parseColor(it) },
+        stroke = parsed.attributes["stroke"]?.takeIf { it != "none" }?.let { parseColorDefinition(it) },
         strokeWidth = parsed.attributes["stroke-width"]?.toFloat(),
         strokeLineCap = parsed.attributes["stroke-linecap"]?.let {
             when (it) {
@@ -305,7 +391,7 @@ private fun parseGraphicsElement(parsed: ParsedTag) =
                 else -> error("Unknown stroke-linejoin value: $it")
             }
         },
-        fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColor(it) },
+        fill = parsed.attributes["fill"]?.takeIf { it != "none" }?.let { parseColorDefinition(it) },
         fillRule = parsed.attributes["fill-rule"]?.let { parseFillRule(it) },
         clipRule = parsed.attributes["clip-rule"]?.let { parseFillRule(it) }
     )
@@ -313,9 +399,9 @@ private fun parseGraphicsElement(parsed: ParsedTag) =
 interface SvgElement
 
 data class SvgGraphicsElement(
-    val stroke: Color?,
+    val stroke: ColorDef?,
     val strokeWidth: Float?,
-    val fill: Color?,
+    val fill: ColorDef?,
     val strokeLineCap: StrokeLineCap?,
     val strokeLineJoin: StrokeLineJoin?,
     val fillRule: FillRule?,
@@ -327,11 +413,41 @@ data class SvgDocument(
     val viewBox: Rect?,
     val width: Float?,
     val height: Float?,
+    val definitions: List<SvgDefinition>,
     val children: List<SvgElement>,
 ) {
     enum class Version {
         v1_1
     }
+}
+
+data class SvgDefinitions(
+    val definitions: List<SvgDefinition>
+) : SvgElement
+
+sealed interface SvgDefinition {
+    val id: String
+}
+
+data class SvgLinearGradient(
+    override val id: String,
+    val x1: Float?,
+    val y1: Float?,
+    val x2: Float?,
+    val y2: Float?,
+    val stops: List<SvgStop>,
+    val spreadMethod: SpreadMethod
+) : SvgDefinition
+
+data class SvgStop(
+    val offset: Float,
+    val color: Color
+)
+
+enum class SpreadMethod {
+    Pad,
+    Reflect,
+    Repeat
 }
 
 data class Group(
@@ -378,3 +494,7 @@ enum class FillRule {
     EvenOdd,
     NonZero
 }
+
+sealed interface ColorDef
+data class ColorValue(val value: Color): ColorDef
+data class ColorReference(val id: String): ColorDef

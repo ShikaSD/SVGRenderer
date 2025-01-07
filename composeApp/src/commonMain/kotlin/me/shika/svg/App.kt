@@ -16,21 +16,23 @@ import androidx.compose.ui.unit.dp
 import me.shika.svg.renderer.RenderSvg
 import me.shika.svg.renderer.parseSvg
 import org.jetbrains.compose.ui.tooling.preview.Preview
-import java.net.URI
 import java.nio.file.Files
 
 @Composable
 @Preview
 fun App() {
     val urls = Files.list(java.nio.file.Path.of("/Users/shika/projects/social-app/assets/icons")).map { it.toUri() }.toList()
-//    val svgUrls = listOf(
+//    val urls = listOf(
 //        URI("https://upload.wikimedia.org/wikipedia/commons/0/02/SVG_logo.svg"),
 //        URI("https://upload.wikimedia.org/wikipedia/commons/6/6b/Bitmap_VS_SVG.svg"),
+//    )
+//    val urls = listOfNotNull(
+//        SVG::class.java.classLoader.getResource("sample.svg")?.toURI(),
 //    )
     Column(Modifier.verticalScroll(rememberScrollState())) {
         urls.sorted().forEach {
             Text(it.toString())
-            Box(Modifier.size(128.dp)) {
+            Box(Modifier.size(200.dp)) {
                 val svgText = it.toURL().readText()
                 val svg = remember {
                     try {
