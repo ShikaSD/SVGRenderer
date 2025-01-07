@@ -234,6 +234,7 @@ private fun convertToDefinition(parsed: ParsedTag): SvgDefinition? =
                 } ?: SpreadMethod.Pad
             )
         }
+        "style" -> { null }
         else -> error("Unknown definition: $parsed")
     }
 
